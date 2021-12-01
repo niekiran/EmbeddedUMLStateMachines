@@ -1,0 +1,980 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model version="5.1.1" links="0">
+ <framework name="qpn"/>
+ <package name="AOs" stereotype="0x02">
+  <class name="Clock_Alarm" superclass="qpn::QActive">
+   <attribute name="curr_time" type="uint32_t" visibility="0x02" properties="0x01"/>
+   <attribute name="temp_time" type="uint32_t" visibility="0x02" properties="0x00"/>
+   <attribute name="time_mode" type="uint8_t" visibility="0x02" properties="0x00"/>
+   <attribute name="obj" type="Clock_Alarm" visibility="0x02" properties="0x01"/>
+   <attribute name="temp_format" type="uint8_t" visibility="0x02" properties="0x00"/>
+   <attribute name="temp_digit" type="uint8_t" visibility="0x02" properties="0x00"/>
+   <attribute name="curr_setting" type="uint8_t" visibility="0x02" properties="0x00"/>
+   <attribute name="alarm" type="Alarm" visibility="0x02" properties="0x00"/>
+   <attribute name="timeout" type="uint8_t" visibility="0x02" properties="0x00"/>
+   <operation name="get_curr_time" type="uint32_t" visibility="0x00" properties="0x01">
+    <documentation>This returns the value of curr_time</documentation>
+    <code>uint8_t saved_sreg = SREG;
+uint32_t temp;
+cli();
+temp = Clock_Alarm_curr_time;
+SREG = saved_sreg;
+return temp;</code>
+   </operation>
+   <operation name="update_curr_time" type="void" visibility="0x00" properties="0x01">
+    <code>if(++Clock_Alarm_curr_time == MAX_TIME){
+    Clock_Alarm_curr_time = 0;
+}</code>
+   </operation>
+   <operation name="set_curr_time" type="void" visibility="0x00" properties="0x01">
+    <parameter name="new_curr_time" type="uint32_t"/>
+    <code>uint8_t save_sreg;
+save_sreg = SREG;
+cli();
+TCCR1B &amp;= ~(0x7U); //Stop the TIMER1
+TCNT1 = 0U;    
+Clock_Alarm_curr_time = new_curr_time;
+TCCR1B |= 0x3U;
+SREG = save_sreg;</code>
+   </operation>
+   <operation name="display_curr_time" type="void" visibility="0x00" properties="0x00">
+    <parameter name="row" type="uint8_t"/>
+    <parameter name="col" type="uint8_t"/>
+    <code>String time_as_string;
+uint32_t time_;
+
+uint32_t time24h = Clock_Alarm_get_curr_time(); 
+uint8_t ss = time24h % 10U;       //extract sub-second to append later
+time24h /= 10; //convert to number of seconds
+
+time_ = (me-&gt;time_mode == MODE_24H)?time24h:convert_24hformat_to_12h(time24h);
+time_as_string = integertime_to_string(time_); //hh:mm:ss
+time_as_string.concat('.');
+time_as_string.concat(ss);
+
+/*if mode is 12H , concatenate  am/pm information */
+if(me-&gt;time_mode == MODE_12H){
+    time_as_string.concat(' ');
+    time_as_string.concat(get_am_or_pm(time24h));
+}
+
+display_write(time_as_string,row,col);</code>
+   </operation>
+   <operation name="display_clock_setting_time" type="void" visibility="0x00" properties="0x00">
+    <parameter name="row" type="uint8_t"/>
+    <parameter name="col" type="uint8_t"/>
+    <code>String time_as_string;
+
+time_as_string = integertime_to_string(me-&gt;temp_time); //hh:mm:ss
+
+/*concatenate  am/pm information */
+if(me-&gt;temp_format != FORMAT_24H){
+    time_as_string.concat(' ');
+    if(me-&gt;temp_format == FORMAT_AM)
+        time_as_string.concat(&quot;AM&quot;);
+    else
+        time_as_string.concat(&quot;PM&quot;);
+}
+
+display_write(time_as_string,row,col);</code>
+   </operation>
+   <statechart properties="0x01">
+    <initial target="../1">
+     <action>Alarm_init(&amp;me-&gt;alarm);
+Clock_Alarm_set_curr_time(INITIAL_CURR_TIME);
+me-&gt;time_mode = MODE_12H;</action>
+     <initial_glyph conn="43,17,5,0,20,12">
+      <action box="0,-2,10,2"/>
+     </initial_glyph>
+    </initial>
+    <state name="Clock">
+     <initial target="../4">
+      <initial_glyph conn="26,68,5,2,5,-4">
+       <action box="0,-2,10,2"/>
+      </initial_glyph>
+     </initial>
+     <history type="deep" target="../4">
+      <history_glyph conn="22,76,3,2,15,-12"/>
+     </history>
+     <tran trig="TICK">
+      <action>Q_SIG(&amp;me-&gt;alarm) = ALARM_CHECK_SIG;
+Q_PAR(&amp;me-&gt;alarm) =  Clock_Alarm_get_curr_time()/10;
+Alarm_dispatch(&amp;me-&gt;alarm);
+if(me-&gt;curr_setting == NO_SETTING)
+    Clock_Alarm_display_curr_time(me,TICKING_CURR_TIME_ROW,TICKING_CURR_TIME_COL);
+else if(me-&gt;curr_setting == ALARM_SETTING){
+    Clock_Alarm_display_curr_time(me,ALARM_SETTING_CURR_TIME_ROW,ALARM_SETTING_CURR_TIME_COL);
+    if( QHsm_state(me) != Q_STATE_CAST(&amp;Clock_Alarm_alarm_on_off))
+        Clock_Alarm_display_clock_setting_time(me,CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_COL);
+        
+    if( QHsm_state(me) == Q_STATE_CAST(&amp;Clock_Alarm_hd1))
+        display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_HOUR_D1_COL);
+    else if( QHsm_state(me) == Q_STATE_CAST(&amp;Clock_Alarm_hd2))
+        display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_HOUR_D2_COL);
+    else if( QHsm_state(me) == Q_STATE_CAST(&amp;Clock_Alarm_md1))
+        display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_MIN_D1_COL);
+    else if( QHsm_state(me) == Q_STATE_CAST(&amp;Clock_Alarm_md2))
+        display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_MIN_D2_COL);
+    else if( QHsm_state(me) == Q_STATE_CAST(&amp;Clock_Alarm_sd1))
+        display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_SEC_D1_COL);
+    else if( QHsm_state(me) == Q_STATE_CAST(&amp;Clock_Alarm_sd2))
+        display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_SEC_D2_COL);
+    else if( QHsm_state(me) == Q_STATE_CAST(&amp;Clock_Alarm_clock_format))
+        display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_FMT_COL);
+    else if( QHsm_state(me) == Q_STATE_CAST(&amp;Clock_Alarm_alarm_on_off))
+         display_set_cursor(CLOCK_SETTING_TIME_ROW,ALARM_SETTING_STATUS_COL);
+}</action>
+      <tran_glyph conn="22,100,3,-1,35">
+       <action box="0,-2,10,2"/>
+      </tran_glyph>
+     </tran>
+     <tran trig="ALARM" target="../../2">
+      <tran_glyph conn="184,116,2,0,21">
+       <action box="0,-2,10,2"/>
+      </tran_glyph>
+     </tran>
+     <state name="Ticking">
+      <entry brief="display_the_curr_time">Clock_Alarm_display_curr_time(me,TICKING_CURR_TIME_ROW,TICKING_CURR_TIME_COL);
+me-&gt;curr_setting = NO_SETTING;</entry>
+      <exit>display_clear();</exit>
+      <tran trig="SET" target="../../5">
+       <action>me-&gt;curr_setting =CLOCK_SETTING;
+me-&gt;temp_time = Clock_Alarm_get_curr_time()/10;
+if(me-&gt;time_mode == MODE_12H){
+    if(get_am_or_pm(me-&gt;temp_time).equals(&quot;AM&quot;)){
+        me-&gt;temp_format = FORMAT_AM;
+    }
+    else{
+        me-&gt;temp_format = FORMAT_PM;
+    }
+    me-&gt;temp_time = convert_24hformat_to_12h(me-&gt;temp_time);
+}
+else
+    me-&gt;temp_format = FORMAT_24H;</action>
+       <tran_glyph conn="64,45,1,3,26,8,2">
+        <action box="0,-2,10,2"/>
+       </tran_glyph>
+      </tran>
+      <tran trig="OK" target="../../5">
+       <action>me-&gt;curr_setting =ALARM_SETTING;
+me-&gt;temp_time = Alarm_get_alarm_time(&amp;me-&gt;alarm);
+if(me-&gt;time_mode == MODE_12H){
+    if(get_am_or_pm(me-&gt;temp_time).equals(&quot;AM&quot;)){
+        me-&gt;temp_format = FORMAT_AM;
+    }
+    else{
+        me-&gt;temp_format = FORMAT_PM;
+    }
+    me-&gt;temp_time = convert_24hformat_to_12h(me-&gt;temp_time);
+}
+else
+    me-&gt;temp_format = FORMAT_24H;</action>
+       <tran_glyph conn="64,61,1,3,28">
+        <action box="0,-2,10,2"/>
+       </tran_glyph>
+      </tran>
+      <state_glyph node="28,36,36,28">
+       <entry box="1,2,6,2"/>
+       <exit box="1,4,6,2"/>
+      </state_glyph>
+     </state>
+     <state name="Settings">
+      <entry>Clock_Alarm_display_clock_setting_time(me,CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_COL);
+display_cursor_on_blinkon();</entry>
+      <exit>display_clear();
+display_cursor_off_blinkoff();</exit>
+      <initial target="../9">
+       <initial_glyph conn="99,60,4,2,-1,6,-2">
+        <action box="0,-2,10,2"/>
+       </initial_glyph>
+      </initial>
+      <tran trig="ABRT" target="../../4">
+       <tran_glyph conn="92,83,3,2,-34,-19">
+        <action box="0,-2,10,2"/>
+       </tran_glyph>
+      </tran>
+      <tran trig="OK" target="../../4">
+       <action>if(me-&gt;curr_setting == CLOCK_SETTING){
+    if(me-&gt;temp_format != FORMAT_24H){
+        me-&gt;temp_time = convert_12hformat_to_24h( me-&gt;temp_time,(time_format_t)me-&gt;temp_format);
+        me-&gt;time_mode = MODE_12H;
+    }else{
+        me-&gt;time_mode = MODE_24H;
+    }
+    me-&gt;temp_time *= 10UL;
+    Clock_Alarm_set_curr_time(me-&gt;temp_time);
+}else if(me-&gt;curr_setting == ALARM_SETTING){
+   //me-&gt;alarm_status = me-&gt;temp_digit;
+    if(me-&gt;temp_format != FORMAT_24H){
+        me-&gt;temp_time = convert_12hformat_to_24h( me-&gt;temp_time,(time_format_t)me-&gt;temp_format);
+    }
+    Alarm_set_alarm_time(&amp;me-&gt;alarm,me-&gt;temp_time);
+    Alarm_set_status(&amp;me-&gt;alarm,me-&gt;temp_digit);
+}</action>
+       <tran_glyph conn="92,90,3,2,-24,1,-24,-27">
+        <action box="0,-2,10,2"/>
+       </tran_glyph>
+      </tran>
+      <state name="hd2">
+       <entry>display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_HOUR_D2_COL);
+me-&gt;temp_digit =  DIGIT2(GET_HOUR(me-&gt;temp_time));</entry>
+       <tran trig="SET">
+        <action>++me-&gt;temp_digit;
+me-&gt;temp_digit %= 10;
+me-&gt;temp_time -=  DIGIT2(GET_HOUR(me-&gt;temp_time))  * 3600UL;
+me-&gt;temp_time += (me-&gt;temp_digit) * 3600UL;
+Clock_Alarm_display_clock_setting_time(me,CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_COL);
+display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_HOUR_D2_COL);</action>
+        <tran_glyph conn="129,54,3,-1,9">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <tran trig="OK" target="../../4">
+        <tran_glyph conn="146,52,1,3,8">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <state_glyph node="129,45,17,12">
+        <entry box="1,2,6,2"/>
+       </state_glyph>
+      </state>
+      <state name="md1">
+       <entry>display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_MIN_D1_COL);
+me-&gt;temp_digit =  DIGIT1(GET_MIN(me-&gt;temp_time));</entry>
+       <tran trig="SET">
+        <action>++me-&gt;temp_digit;
+me-&gt;temp_digit %= 6;
+me-&gt;temp_time -=  DIGIT1(GET_MIN(me-&gt;temp_time)) *10UL * 60UL;
+me-&gt;temp_time += (me-&gt;temp_digit) * 10UL * 60UL;
+Clock_Alarm_display_clock_setting_time(me,CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_COL);
+display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_MIN_D1_COL);</action>
+        <tran_glyph conn="154,54,3,-1,9">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <tran trig="OK" target="../../5">
+        <tran_glyph conn="171,51,1,3,7">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <state_glyph node="154,45,17,12">
+        <entry box="1,2,6,2"/>
+       </state_glyph>
+      </state>
+      <state name="md2">
+       <entry>display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_MIN_D2_COL);
+me-&gt;temp_digit =  DIGIT2(GET_MIN(me-&gt;temp_time));</entry>
+       <tran trig="SET">
+        <action>++me-&gt;temp_digit;
+me-&gt;temp_digit %= 10;
+me-&gt;temp_time -=  DIGIT2(GET_MIN(me-&gt;temp_time))  * 60UL;
+me-&gt;temp_time += (me-&gt;temp_digit) * 60UL;
+Clock_Alarm_display_clock_setting_time(me,CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_COL);
+display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_MIN_D2_COL);</action>
+        <tran_glyph conn="178,54,3,-1,9">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <tran trig="OK" target="../../10">
+        <tran_glyph conn="195,51,1,0,3,11,-85,5">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <state_glyph node="178,45,17,12">
+        <entry box="1,2,6,2"/>
+       </state_glyph>
+      </state>
+      <state name="sd2">
+       <entry>display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_SEC_D2_COL);
+me-&gt;temp_digit =  DIGIT2(GET_SEC(me-&gt;temp_time));</entry>
+       <tran trig="SET">
+        <action>++me-&gt;temp_digit;
+me-&gt;temp_digit %= 10;
+me-&gt;temp_time -=  DIGIT2(GET_SEC(me-&gt;temp_time));
+me-&gt;temp_time +=  me-&gt;temp_digit;
+Clock_Alarm_display_clock_setting_time(me,CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_COL);
+display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_SEC_D2_COL);
+</action>
+        <tran_glyph conn="131,76,3,-1,9">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <tran trig="OK" target="../../7">
+        <tran_glyph conn="148,74,1,3,14">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <state_glyph node="131,67,17,12">
+        <entry box="1,2,6,2"/>
+       </state_glyph>
+      </state>
+      <state name="clock_format">
+       <entry>display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_FMT_COL);
+String msg[3] = {&quot;24H&quot;,&quot;AM &quot;,&quot;PM &quot;};
+display_write(msg[me-&gt;temp_format],CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_FMT_COL);
+display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_FMT_COL);</entry>
+       <tran trig="SET">
+        <action>String msg;
+if(me-&gt;temp_format == FORMAT_24H){
+    me-&gt;temp_format = FORMAT_AM;
+    msg = &quot;AM &quot;;
+}
+else if(me-&gt;temp_format == FORMAT_AM){
+    me-&gt;temp_format = FORMAT_PM;
+    msg = &quot;PM &quot;;
+}
+else if (me-&gt;temp_format == FORMAT_PM){
+    me-&gt;temp_format = FORMAT_24H;
+    msg = &quot;24H&quot;;
+}
+display_write(msg,CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_FMT_COL);
+display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_FMT_COL);</action>
+        <tran_glyph conn="162,76,3,-1,9">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <tran trig="OK">
+        <choice target="../../../8">
+         <guard>is_time_set_error(me-&gt;temp_time,(time_format_t)me-&gt;temp_format)</guard>
+         <choice_glyph conn="186,74,5,3,10,12,2">
+          <action box="-2,1,9,4"/>
+         </choice_glyph>
+        </choice>
+        <choice>
+         <guard>else</guard>
+         <choice target="../../../../11">
+          <guard>me-&gt;curr_setting == ALARM_SETTING</guard>
+          <choice_glyph conn="186,66,5,2,33,-6">
+           <action box="13,0,10,2"/>
+          </choice_glyph>
+         </choice>
+         <choice_glyph conn="186,74,4,-1,-8">
+          <action box="1,-5,10,2"/>
+         </choice_glyph>
+        </choice>
+        <tran_glyph conn="179,74,1,-1,7">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <state_glyph node="162,67,17,12">
+        <entry box="1,2,6,2"/>
+       </state_glyph>
+      </state>
+      <state name="setting_error">
+       <entry>display_cursor_off_blinkoff();
+display_erase_block(CLOCK_SETTING_ERR_MSG_ROW,0,15);
+QActive_armX(AO_ClockAlarm,0,MS_TO_TICKS(500),MS_TO_TICKS(500));</entry>
+       <exit>display_erase_block(CLOCK_SETTING_ERR_MSG_ROW,CLOCK_SETTING_ERR_MSG_COL,CLOCK_SETTING_ERR_MSG_COL_END);
+QActive_disarmX(AO_ClockAlarm,0);
+</exit>
+       <initial target="../5">
+        <initial_glyph conn="201,92,5,2,5,-1">
+         <action box="0,-2,10,2"/>
+        </initial_glyph>
+       </initial>
+       <tran trig="SET" target="../..">
+        <action>display_cursor_on_blinkon();</action>
+        <tran_glyph conn="218,79,0,1,-4,37">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <tran trig="OK">
+        <tran_glyph conn="227,92,1,-1,-9,1">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <tran trig="TICK">
+        <action>Q_SIG(&amp;me-&gt;alarm) = ALARM_CHECK_SIG;
+Q_PAR(&amp;me-&gt;alarm) =  Clock_Alarm_get_curr_time()/10;
+Alarm_dispatch(&amp;me-&gt;alarm);</action>
+        <tran_glyph conn="227,83,1,-1,-7">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <state name="err_off">
+        <entry>display_erase_block(CLOCK_SETTING_ERR_MSG_ROW,CLOCK_SETTING_ERR_MSG_COL,CLOCK_SETTING_ERR_MSG_COL_END);</entry>
+        <tran trig="Q_TIMEOUT" target="../../5">
+         <tran_glyph conn="217,89,3,1,-9">
+          <action box="-6,0,10,2"/>
+         </tran_glyph>
+        </tran>
+        <state_glyph node="217,84,9,7">
+         <entry box="1,2,6,2"/>
+        </state_glyph>
+       </state>
+       <state name="err_on">
+        <entry>display_write(&quot;Error!&quot;,CLOCK_SETTING_ERR_MSG_ROW,CLOCK_SETTING_ERR_MSG_COL);</entry>
+        <tran trig="Q_TIMEOUT" target="../../4">
+         <tran_glyph conn="208,87,1,3,9">
+          <action box="0,-2,10,2"/>
+         </tran_glyph>
+        </tran>
+        <state_glyph node="200,84,8,7">
+         <entry box="1,2,6,2"/>
+        </state_glyph>
+       </state>
+       <state_glyph node="198,79,29,15">
+        <entry box="1,2,6,2"/>
+        <exit box="1,4,6,2"/>
+       </state_glyph>
+      </state>
+      <state name="hd1">
+       <entry>display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_HOUR_D1_COL);
+me-&gt;temp_digit =  DIGIT1(GET_HOUR(me-&gt;temp_time));</entry>
+       <tran trig="SET">
+        <action>++me-&gt;temp_digit;
+me-&gt;temp_digit %= 3;
+me-&gt;temp_time -=  DIGIT1(GET_HOUR(me-&gt;temp_time)) * 10UL * 3600UL;
+me-&gt;temp_time +=  me-&gt;temp_digit * 10UL  * 3600UL;
+Clock_Alarm_display_clock_setting_time(me,CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_COL);
+display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_HOUR_D1_COL);
+</action>
+        <tran_glyph conn="102,53,3,-1,9">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <tran trig="OK" target="../../3">
+        <tran_glyph conn="119,52,1,3,10">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <state_glyph node="102,45,17,12">
+        <entry box="1,2,6,2"/>
+       </state_glyph>
+      </state>
+      <state name="sd1">
+       <entry>display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_SEC_D1_COL);
+me-&gt;temp_digit =  DIGIT1(GET_SEC(me-&gt;temp_time));</entry>
+       <tran trig="SET">
+        <action>++me-&gt;temp_digit;
+me-&gt;temp_digit %= 6;
+me-&gt;temp_time -=  DIGIT1(GET_SEC(me-&gt;temp_time)) * 10UL;
+me-&gt;temp_time +=  me-&gt;temp_digit *  10UL;
+Clock_Alarm_display_clock_setting_time(me,CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_COL);
+display_set_cursor(CLOCK_SETTING_TIME_ROW,CLOCK_SETTING_TIME_SEC_D1_COL);
+</action>
+        <tran_glyph conn="104,76,3,-1,9">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <tran trig="OK" target="../../6">
+        <tran_glyph conn="121,74,1,3,10">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <state_glyph node="104,67,17,12">
+        <entry box="1,2,6,2"/>
+       </state_glyph>
+      </state>
+      <state name="alarm_on_off">
+       <entry>display_erase_block(ALARM_SETTING_STATUS_ROW,0,15);
+me-&gt;temp_digit = 0U;
+display_write(&quot;ALARM OFF&quot;,ALARM_SETTING_STATUS_ROW,ALARM_SETTING_STATUS_COL);
+display_set_cursor(ALARM_SETTING_STATUS_ROW,ALARM_SETTING_STATUS_COL);</entry>
+       <tran trig="SET">
+        <action>if(me-&gt;temp_digit){
+    display_write(&quot;ALARM OFF&quot;,ALARM_SETTING_STATUS_ROW,ALARM_SETTING_STATUS_COL);
+    me-&gt;temp_digit = 0;
+}else{
+    display_write(&quot;ALARM ON &quot;,ALARM_SETTING_STATUS_ROW,ALARM_SETTING_STATUS_COL);
+    me-&gt;temp_digit = 1;
+}
+display_set_cursor(ALARM_SETTING_STATUS_ROW,ALARM_SETTING_STATUS_COL);</action>
+        <tran_glyph conn="208,54,3,-1,11">
+         <action box="0,-2,10,2"/>
+        </tran_glyph>
+       </tran>
+       <state_glyph node="208,45,25,15">
+        <entry box="1,2,6,2"/>
+       </state_glyph>
+      </state>
+      <state_glyph node="92,34,163,69">
+       <entry box="1,2,6,2"/>
+       <exit box="1,4,6,2"/>
+      </state_glyph>
+     </state>
+     <state_glyph node="22,29,239,87"/>
+    </state>
+    <state name="Alarm_Notify">
+     <entry>me-&gt;timeout = 20;
+QActive_armX(AO_ClockAlarm,0,MS_TO_TICKS(500),MS_TO_TICKS(500));</entry>
+     <exit>display_clear();
+QActive_disarmX(AO_ClockAlarm,0);</exit>
+     <initial target="../4">
+      <initial_glyph conn="158,171,5,2,12,-4">
+       <action box="0,-2,10,2"/>
+      </initial_glyph>
+     </initial>
+     <tran trig="OK" target="../../1" cpref="../../1/1">
+      <tran_glyph conn="146,151,3,3,-131,-75,6">
+       <action box="0,-2,10,2"/>
+      </tran_glyph>
+     </tran>
+     <tran trig="TICK">
+      <action>Clock_Alarm_display_curr_time(me,ALARM_SETTING_CURR_TIME_ROW,ALARM_SETTING_CURR_TIME_COL);</action>
+      <tran_glyph conn="146,177,3,-1,16">
+       <action box="0,-2,10,2"/>
+      </tran_glyph>
+     </tran>
+     <tran trig="Q_TIMEOUT" target="../../1">
+      <tran_glyph conn="161,137,0,2,-21">
+       <action box="0,-2,10,2"/>
+      </tran_glyph>
+     </tran>
+     <state name="alarm_msg_on">
+      <entry>
+display_write(&quot;*ALARM*&quot;,ALARM_NOTIFY_MSG_ROW,ALARM_NOTIFY_MSG_COL);</entry>
+      <tran trig="Q_TIMEOUT">
+       <action>--me-&gt;timeout;</action>
+       <choice target="../../../5">
+        <guard>me-&gt;timeout</guard>
+        <choice_glyph conn="187,155,5,3,17">
+         <action box="1,0,10,2"/>
+        </choice_glyph>
+       </choice>
+       <tran_glyph conn="178,155,1,-1,9">
+        <action box="0,-2,10,2"/>
+       </tran_glyph>
+      </tran>
+      <state_glyph node="153,149,25,18">
+       <entry box="1,2,6,2"/>
+      </state_glyph>
+     </state>
+     <state name="alarm_msg_off">
+      <entry>display_erase_block(ALARM_NOTIFY_MSG_ROW,ALARM_NOTIFY_MSG_COL,10);</entry>
+      <tran trig="Q_TIMEOUT" target="../../4">
+       <tran_glyph conn="204,161,3,1,-26">
+        <action box="0,-2,10,2"/>
+       </tran_glyph>
+      </tran>
+      <state_glyph node="204,148,25,18">
+       <entry box="1,2,6,2"/>
+      </state_glyph>
+     </state>
+     <state_glyph node="146,137,91,48">
+      <entry box="1,2,6,2"/>
+      <exit box="1,4,6,2"/>
+     </state_glyph>
+    </state>
+    <state_diagram size="285,221"/>
+   </statechart>
+  </class>
+  <class name="Button" superclass="qpn::QActive">
+   <attribute name="obj" type="Button" visibility="0x02" properties="0x01"/>
+   <statechart properties="0x00">
+    <initial target="../1">
+     <initial_glyph conn="33,8,5,0,12,9">
+      <action box="0,-2,10,2"/>
+     </initial_glyph>
+    </initial>
+    <state name="Button">
+     <tran trig="Q_TIMEOUT">
+      <action>uint8_t b1,b2,btn_pad_value;
+
+//1. read the button pad status
+b1 = digitalRead(PIN_BUTTON1); 
+b2 = digitalRead(PIN_BUTTON2);
+
+btn_pad_value = (b1&lt;&lt;1u)|b2;
+if(btn_pad_value){
+    if(btn_pad_value == BTN_PAD_VALUE_SET){
+       QACTIVE_POST(AO_ClockAlarm,SET_SIG,0U);
+    }else if(btn_pad_value == BTN_PAD_VALUE_OK){
+        QACTIVE_POST(AO_ClockAlarm,OK_SIG,0U);
+    }else if(btn_pad_value == BTN_PAD_VALUE_ABRT){
+        QACTIVE_POST(AO_ClockAlarm,ABRT_SIG,0U);
+    }
+}
+QF_INT_DISABLE();
+flag_report_button_press = true;
+QF_INT_ENABLE();</action>
+      <tran_glyph conn="28,34,3,-1,19">
+       <action box="0,-2,10,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="28,17,48,34"/>
+    </state>
+    <state_diagram size="121,71"/>
+   </statechart>
+  </class>
+  <class name="Alarm" superclass="qpn::QHsm">
+   <attribute name="alarm_time" type="uint32_t" visibility="0x02" properties="0x00"/>
+   <attribute name="alarm_status" type="uint8_t" visibility="0x02" properties="0x00"/>
+   <operation name="init" type="void" visibility="0x00" properties="0x00">
+    <code>QHSM_INIT(&amp;me-&gt;super);</code>
+   </operation>
+   <operation name="dispatch" type="void" visibility="0x00" properties="0x00">
+    <code>QHSM_DISPATCH(&amp;me-&gt;super);</code>
+   </operation>
+   <operation name="set_alarm_time" type="void" visibility="0x00" properties="0x00">
+    <parameter name="alarm_time" type="uint32_t"/>
+    <code>me-&gt;alarm_time = alarm_time;</code>
+   </operation>
+   <operation name="set_status" type="void" visibility="0x00" properties="0x00">
+    <parameter name="status" type="uint8_t"/>
+    <code>me-&gt;alarm_status = status;</code>
+   </operation>
+   <operation name="get_alarm_time" type="uint32_t" visibility="0x00" properties="0x00">
+    <code>return me-&gt;alarm_time;</code>
+   </operation>
+   <statechart properties="0x00">
+    <initial target="../1">
+     <action>me-&gt;alarm_time = INITIAL_ALARM_TIME;
+me-&gt;alarm_status = ALARM_OFF;</action>
+     <initial_glyph conn="27,6,5,0,13,7">
+      <action box="0,-2,10,2"/>
+     </initial_glyph>
+    </initial>
+    <state name="ALARM">
+     <tran trig="ALARM_CHECK">
+      <action>if(Q_PAR(me) == me-&gt;alarm_time)
+    QACTIVE_POST(AO_ClockAlarm,ALARM_SIG,0U);</action>
+      <tran_glyph conn="28,32,3,-1,23">
+       <action box="0,-2,13,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="28,13,47,37"/>
+    </state>
+    <state_diagram size="117,75"/>
+   </statechart>
+  </class>
+  <attribute name="AO_ClockAlarm" type="QActive *const" visibility="0x00" properties="0x00">
+   <code>= &amp;Clock_Alarm_obj.super;</code>
+  </attribute>
+  <attribute name="AO_Button" type="QActive *const" visibility="0x00" properties="0x00">
+   <code>= &amp;Button_obj.super;</code>
+  </attribute>
+  <operation name="Clock_Alarm_ctor" type="void" visibility="0x00" properties="0x00">
+   <code>Alarm_ctor(&amp;Clock_Alarm_obj.alarm);
+QActive_ctor(AO_ClockAlarm,Q_STATE_CAST(&amp;Clock_Alarm_initial));</code>
+  </operation>
+  <operation name="Button_ctor" type="void" visibility="0x00" properties="0x00">
+   <code>QActive_ctor(AO_Button,Q_STATE_CAST(&amp;Button_initial));</code>
+  </operation>
+  <operation name="Alarm_ctor" type="void" visibility="0x00" properties="0x00">
+   <parameter name="me" type="Alarm *const"/>
+   <code>QHsm_ctor(&amp;me-&gt;super,Q_STATE_CAST(&amp;Alarm_initial));</code>
+  </operation>
+  <directory name="../src">
+   <file name="ClockAlarm_SM.cpp">
+    <text>#include &lt;Arduino.h&gt;
+#include &quot;qpn.h&quot;
+#include &quot;lcd.h&quot;
+#include &quot;alarm.h&quot;
+#include &quot;ClockAlarm_SM.h&quot;
+#include &quot;main.h&quot;
+
+
+//prototypes of helper functions
+String get_am_or_pm(uint32_t time24h);
+void display_write(String str_, uint8_t r, uint8_t c);
+String integertime_to_string(uint32_t time_);
+uint32_t convert_12hformat_to_24h(uint32_t time12h, time_format_t ampm);
+uint32_t convert_24hformat_to_12h(uint32_t time24h);
+void display_cursor_on_blinkon(void);
+void display_cursor_off_blinkoff();
+void display_set_cursor(uint8_t r, uint8_t c);
+void display_clear(void);
+bool is_time_set_error(uint32_t time_, time_format_t format);
+void display_erase_block(uint8_t row,uint8_t col_start,uint8_t col_stop);
+static uint8_t process_button_pad_value(uint8_t btn_pad_value);
+
+$declare${AOs::Clock_Alarm}
+$define${AOs::AO_ClockAlarm}
+$define${AOs::Clock_Alarm_ctor}
+
+$define${AOs::Clock_Alarm}
+
+ISR(TIMER1_COMPA_vect){
+     QF_tickXISR(0);
+     Clock_Alarm_update_curr_time();
+    
+}
+/*
+ * Description : Decodes AM/PM information from given time in 24H format
+ * param1: Integer time in 24H format
+ * return : A string value(&quot;AM&quot; or &quot;PM&quot;)
+ */
+String get_am_or_pm(uint32_t time24h){
+    String ampm;
+    uint8_t h = GET_HOUR(time24h);
+    if(h == 0U){
+        ampm = &quot;AM&quot;;
+    }else if( h &gt; 12U){
+        ampm = &quot;PM&quot;;
+    }else if (h == 12U)
+        ampm = &quot;PM&quot;;
+    else
+        ampm = &quot;AM&quot;;
+    return ampm;
+}
+
+/*
+ * Description: Writes a message to the LCD at given row and column number
+ * param1 : Message to write in 'String' format
+ * param2 : row number of the LCD
+ * param2 : column number of the LCD
+ */
+void  display_write(String str_, uint8_t r, uint8_t c){
+    lcd_set_cursor(c,r);
+    lcd_print_string(str_);
+}
+
+/*
+ * Description: converts an 'integer' time to 'String' time
+ * param1 : time represented in terms of number of seconds
+ * return : time as 'String' value in the format HH:MM:SS
+ */
+String integertime_to_string(uint32_t time_){
+    uint8_t h,m,s;
+    char buf[10]; //00:00:00+null
+    h = GET_HOUR(time_); /* Extract how many hours the 'time_' represent */
+    m = GET_MIN(time_);  /* Extract how many minutes the 'time_' represent */
+    s = GET_SEC(time_);     /* Extract how many seconds the 'time_' represent */
+    sprintf(buf,&quot;%02d:%02d:%02d&quot;,h,m,s);
+    return (String)buf;
+}
+
+/*
+ * Description: Converts given integer time in 12H format to integer time 24H format
+ * param1 : Integer time in 12H format
+ * param2 : time format of type time_format_t
+ * return : Integer time in 24H format
+ */
+uint32_t convert_12hformat_to_24h(uint32_t time12h, time_format_t ampm){
+    uint8_t hour;
+    uint32_t time24h;
+    hour = GET_HOUR(time12h);
+    if(ampm == FORMAT_AM){
+        time24h = (hour == 12)? (time12h-(12UL * 3600UL)) : time12h;
+    }else{
+        time24h = (hour == 12)? time12h : (time12h +(12UL * 3600UL));
+    }
+    return time24h;
+}
+
+/*
+ * Description: Converts given integer time in 24H format to integer time 12H format
+ * param1 : Integer time in 24H format
+ * return : Integer time in 12H format
+ */
+uint32_t convert_24hformat_to_12h(uint32_t time24h){
+    uint8_t hour;
+    uint32_t time12h;
+    hour = GET_HOUR(time24h);
+
+    if(hour == 0)
+        time12h = time24h + (12UL * 3600UL);
+    else{
+        if((hour &lt; 12UL) || (hour == 12UL))
+            return time24h;
+        else
+            time12h = time24h - (12UL * 3600UL);
+    }
+    return time12h;
+}
+
+void display_cursor_on_blinkon(void){
+    lcd_cursor_show();
+    lcd_cursor_blink();
+}
+
+void display_set_cursor(uint8_t r, uint8_t c){
+     lcd_set_cursor(c,r);
+}
+
+
+void display_cursor_off_blinkoff(){
+    lcd_cursor_off();
+    lcd_cursor_blinkoff();
+}
+
+void display_clear(void){
+    lcd_clear();
+}
+
+bool is_time_set_error(uint32_t time_,time_format_t format){
+    uint8_t h = GET_HOUR(time_);
+    return ((h &gt; 23) || ((h &gt; 12 || (h == 0))&amp;&amp; format != FORMAT_24H) );
+}
+
+
+void display_erase_block(uint8_t row,uint8_t col_start,uint8_t col_stop)
+{
+    uint8_t len = col_stop - col_start;
+    do{
+        lcd_set_cursor(col_start++,row);
+        lcd_print_char(' ');
+    }while(len--);
+}
+
+
+static uint8_t process_button_pad_value(uint8_t btn_pad_value)
+{
+  static button_state_t btn_sm_state = NOT_PRESSED;
+  static uint32_t curr_time = millis();
+
+  switch(btn_sm_state){
+    case NOT_PRESSED:{
+      if(btn_pad_value){
+        btn_sm_state = BOUNCE;
+        curr_time = millis();
+      }
+      break;
+    }
+    case BOUNCE:{
+      if(millis() - curr_time &gt;= 50 ){
+        //50ms has passed 
+        if(btn_pad_value){
+          btn_sm_state = PRESSED;
+          return btn_pad_value;
+        }
+        else
+          btn_sm_state = NOT_PRESSED;
+      }
+      break;
+    }
+    case PRESSED:{
+      if(!btn_pad_value){
+        btn_sm_state = BOUNCE;
+        curr_time = millis();
+      }
+      break;
+    }
+
+  }
+
+  return 0;
+}</text>
+   </file>
+   <file name="ClockAlarm_SM.h">
+    <text>#ifndef CLOCK_ALARM_H
+#define CLOCK_ALARM_H
+
+//#include &quot;qpn.h&quot;
+
+$declare${AOs::AO_ClockAlarm}
+$declare${AOs::Clock_Alarm_ctor}
+
+enum ClockAlarm_Signals{
+    SET_SIG = Q_USER_SIG,
+    OK_SIG,
+    ABRT_SIG,
+    ALARM_SIG,
+    TICK_SIG,
+    ALARM_CHECK_SIG,
+    BUTTON_SCAN_SIG,
+    IGNORE_SIG,
+    MAX_SIG
+};
+
+enum time_mode{
+    MODE_24H,
+    MODE_12H
+};
+
+enum alarm_status{
+    ALARM_OFF,
+    ALARM_ON
+};
+
+enum setting{
+    NO_SETTING,
+    CLOCK_SETTING,
+    ALARM_SETTING
+};
+
+typedef enum time_format{
+    FORMAT_24H,
+    FORMAT_AM,
+    FORMAT_PM
+}time_format_t;
+
+typedef enum{
+    NOT_PRESSED,
+    BOUNCE,
+    PRESSED
+}button_state_t;
+
+
+
+#define GET_HOUR(seconds)     (seconds/3600UL)
+#define GET_MIN(seconds)      ((seconds/60UL)%60UL)
+#define GET_SEC(seconds)      (seconds % 60UL)
+#define DIGIT1(d)             (d/10U)
+#define DIGIT2(d)             (d%10U)
+
+#define MAX_TIME  (864000UL)
+#define INITIAL_CURR_TIME  ((10UL * 3600UL + 10UL * 60UL + 10UL) * 10UL)
+#define INITIAL_ALARM_TIME  (8UL * 3600UL)
+
+#define TICKING_CURR_TIME_ROW  0
+#define TICKING_CURR_TIME_COL  3
+#define CLOCK_SETTING_TIME_ROW 0
+#define CLOCK_SETTING_TIME_COL 2
+#define CLOCK_SETTING_TIME_HOUR_D1_COL 2
+#define CLOCK_SETTING_TIME_HOUR_D2_COL 3
+#define CLOCK_SETTING_TIME_MIN_D1_COL 5
+#define CLOCK_SETTING_TIME_MIN_D2_COL 6
+#define CLOCK_SETTING_TIME_SEC_D1_COL 8
+#define CLOCK_SETTING_TIME_SEC_D2_COL 9
+#define CLOCK_SETTING_TIME_FMT_COL     11
+#define CLOCK_SETTING_ERR_MSG_ROW 1
+#define CLOCK_SETTING_ERR_MSG_COL  4
+#define CLOCK_SETTING_ERR_MSG_COL_END 9
+
+#define ALARM_SETTING_CURR_TIME_ROW 1
+#define ALARM_SETTING_CURR_TIME_COL  2
+#define ALARM_SETTING_STATUS_ROW 0
+#define ALARM_SETTING_STATUS_COL  4
+#define ALARM_NOTIFY_MSG_ROW 0
+#define ALARM_NOTIFY_MSG_COL 4
+
+#define CS_ROW 0
+#define CS_HOUR_D1_COL  2
+
+#endif</text>
+   </file>
+   <file name="alarm.cpp">
+    <text>#include &lt;Arduino.h&gt;
+#include &quot;qpn.h&quot;
+#include &quot;alarm.h&quot;
+#include &quot;ClockAlarm_SM.h&quot;
+
+Q_DEFINE_THIS_FILE;
+
+$define${AOs::Alarm}
+$define${AOs::Alarm_ctor}</text>
+   </file>
+   <file name="alarm.h">
+    <text>#ifndef ALARM_H
+#define ALARM_H
+
+$declare${AOs::Alarm}
+$declare${AOs::Alarm_ctor}
+
+#endif</text>
+   </file>
+   <file name="button_SM.cpp">
+    <text>#include &lt;Arduino.h&gt;
+#include &quot;qpn.h&quot;
+#include &quot;button_SM.h&quot;
+#include &quot;ClockAlarm_SM.h&quot;
+#include &quot;main.h&quot;
+
+$define${AOs::AO_Button}
+$define${AOs::Button}
+$define${AOs::Button_ctor}</text>
+   </file>
+   <file name="button_SM.h">
+    <text>#ifndef BUTTON_H
+#define BUTTON_H
+
+$declare${AOs::AO_Button}
+$declare${AOs::Button}
+$declare${AOs::Button_ctor}
+#endif</text>
+   </file>
+  </directory>
+ </package>
+</model>

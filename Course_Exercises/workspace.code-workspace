@@ -1,0 +1,28 @@
+{
+	"folders": [
+		{
+			"path": "003Protimer"
+		},
+		{
+			"name": "004Protimer_SH",
+			"path": "004Protimer_SH"
+		},
+		{
+			"name": "005Protimer_ST",
+			"path": "005Protimer_ST"
+		},
+		{
+			"name": "006QHsmTest",
+			"path": "006QHsmTest"
+		},
+		{
+			"name": "007ClockAlarm",
+			"path": "007ClockAlarm"
+		},
+		{
+			"name": "008ClockAlarm_AO",
+			"path": "008ClockAlarm_AO"
+		}
+	],
+	"settings": {}
+}
