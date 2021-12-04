@@ -13,8 +13,8 @@ static void sys_tick_init(void);
 static void display_init(void);
 static void attach_button_interrupts(void);
 
-static QEvt ClockAlarmQueue[5];
-static QEvt ButtonQueue[5];
+static QEvt ClockAlarmQueue[8];
+static QEvt ButtonQueue[8];
 
 QActiveCB const QF_active[] = {
   { (QActive*) 0, (QEvt*) 0, 0},
@@ -65,8 +65,8 @@ static void attach_button_interrupts(void)
 }
 
 static void sys_tick_init(void){
-  TCCR1A = 0;                           //CTC mode            
-  TCCR1B = TCCR1B_PRESCALER_1;          //prescaler=1,CTC mode
+  TCCR1A = TCCR1A_CTC_MODE;              //CTC mode            
+  TCCR1B = (TCCR1B_CTC_MODE |TCCR1B_PRESCALER_1);         //prescaler=1,CTC mode
   TIMSK1 |= B00000010;                  //Interrupt enable for OCR1A compare match
   OCR1A = TIMER1_OC_MATCH_VALUE;          //OC match value for CONFIG_TICKS_PER_SECOND time base generation
 }
