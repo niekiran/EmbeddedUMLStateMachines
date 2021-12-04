@@ -132,7 +132,7 @@ static void Clock_Alarm_set_curr_time(uint32_t new_curr_time) {
     TCCR1B &= ~(0x7U); //Stop the TIMER1
     TCNT1 = 0U;
     Clock_Alarm_curr_time = new_curr_time;
-    TCCR1B |= 0x3U;
+    TCCR1B = (TCCR1B_CTC_MODE |TCCR1B_PRESCALER_1);
     SREG = save_sreg;
 }
 
@@ -859,8 +859,13 @@ static QState Clock_Alarm_alarm_msg_off(Clock_Alarm * const me) {
 /*.$enddef${AOs::Clock_Alarm} ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
 
 ISR(TIMER1_COMPA_vect){
+     static uint8_t count = 0;
      QF_tickXISR(0);
-     Clock_Alarm_update_curr_time();
+     if(++count == 100U) {
+         count = 0;
+         Clock_Alarm_update_curr_time();
+        QACTIVE_POST_ISR(AO_ClockAlarm,TICK_SIG,0U);
+    }
 
 }
 /*
@@ -980,5 +985,4 @@ void display_erase_block(uint8_t row,uint8_t col_start,uint8_t col_stop)
         lcd_print_char(' ');
     }while(len--);
 }
-
 
