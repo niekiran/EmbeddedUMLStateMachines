@@ -9,13 +9,15 @@
   <item name="backups">0</item>
  </group>
  <group name="windows">
-  <item id="AOs::Clock_Alarm::SM">0,0,758,769,*</item>
-  <item id="AOs::../src::ClockAlarm_SM.cpp">478,0,674,300</item>
-  <item id="AOs::../src::ClockAlarm_SM.h">478,49,674,300</item>
-  <item id="AOs::../src::alarm.cpp">0,0,674,300</item>
-  <item id="AOs::../src::alarm.h">0,49,674,300</item>
-  <item id="AOs::../src::button_SM.cpp">0,0,1152,349</item>
-  <item id="AOs::../src::button_SM.h">478,0,674,300</item>
+  <item id="AOs::Clock_Alarm::SM">-246,0,1202,676</item>
+  <item id="AOs::../src::ClockAlarm_SM.cpp">0,0,932,494,*</item>
+  <item id="AOs::../src::ClockAlarm_SM.h">0,0,674,300</item>
+  <item id="AOs::../src::alarm.cpp">282,300,674,300</item>
+  <item id="AOs::../src::alarm.h">282,0,674,300</item>
+  <item id="AOs::../src::button_SM.cpp">0,355,1152,349</item>
+  <item id="AOs::../src::button_SM.h">0,0,674,300</item>
+  <item id="AOs::Button::SM">316,224,640,480</item>
+  <item id="AOs::Alarm::SM">0,0,640,480</item>
  </group>
  <group name="search">
   <item name="options">2032128</item>
