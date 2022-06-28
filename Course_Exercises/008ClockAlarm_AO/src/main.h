@@ -32,7 +32,7 @@
 #define MS_PER_TICK                         (1000UL/CONFIG_TICKS_PER_SECOND)
 #define TIMER1_OC_MATCH_VALUE               (((MCU_SYS_CLOCK_FREQ * MS_PER_TICK) / (CONFIG_TIMER1_PRESCALER * 1000UL))-1)
 
-#define MS_TO_TICKS( timeInMs )             ( ( timeInMs  * CONFIG_TICKS_PER_SECOND ) / 1000UL )
+#define MS_TO_TICKS( timeInMs )             ( ( timeInMs)  * (CONFIG_TICKS_PER_SECOND / 1000UL) )
 
 
 extern bool flag_report_button_press;
